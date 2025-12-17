@@ -2,6 +2,7 @@
 
 Use in python:
 
+```
 !uv pip install https://github.com/JamesBagley/bifteck.git
 
 from bifteck import read_xpt_file
@@ -9,10 +10,11 @@ from bifteck import read_xpt_file
 my_plates = read_xpt_file("my_multiplate_experiment.xpt") 
 
 my_plates.head()
-
+```
 
 Use in R:
 
+```
 library(readr)
 
 # Direct pipe (prints progress to stderr)
@@ -22,7 +24,7 @@ df <- read_csv(pipe("uv run bifteck experiment.xpt"))
 system("uv run bifteck experiment.xpt -o output.csv")
 
 df <- read_csv("output.csv")
-
+```
 # What's needed in the working directory for R users:
 
 Just the pyproject.toml file (which contains the dependencies and package configuration)
