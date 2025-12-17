@@ -1,8 +1,7 @@
 import olefile
 import zlib
 import struct
-import numpy as np
-import pandas as pd
+import polars as pl
 from datetime import datetime, timedelta
 import sys
 
@@ -178,18 +177,14 @@ class XptFile:
         total_doubles = len(matrix_bytes) // 8
         matrix_floats = struct.unpack(f'<{total_doubles}d', matrix_bytes)
 
-        # Reshape: (N, 384, 3) where each well has (Value, Flag, Status)
-        # Total: 1152 doubles per timepoint = 384 wells * 3 values
-        np_matrix = np.array(matrix_floats).reshape(num_timepoints, 1152)
-
         # Extract only the measurement values (every 3rd element starting at 0)
-        measurements = np_matrix[:, 0::3]
-
-        df = pd.DataFrame(measurements)
-
-        # Label Wells A1..P24 (16 rows × 24 columns = 384 wells)
+        # 1152 doubles per timepoint = 384 wells * 3 values (Value, Flag, Status)
         well_labels = [f"{r}{c}" for r in "ABCDEFGHIJKLMNOP" for c in range(1, 25)]
-        df.columns = well_labels
+        measurements = {}
+        for well_idx, well in enumerate(well_labels):
+            measurements[well] = [matrix_floats[t * 1152 + well_idx * 3] for t in range(num_timepoints)]
+        
+        df = pl.DataFrame(measurements)
 
         # 6. Extract Temperatures
         temps = []
@@ -199,7 +194,7 @@ class XptFile:
             if current_offset + 8 > len(footer):
                 raise Warning(f"Temperature data out of bounds at timepoint {i} in {self.file_path}, {stream_path}, using NaN for remaining values")
                 # Pad with NaN for missing values
-                temps.extend([np.nan] * (num_timepoints - i))
+                temps.extend([None] * (num_timepoints - i))
                 break
 
             val = struct.unpack('<d', footer[current_offset : current_offset + 8])[0]
@@ -210,7 +205,7 @@ class XptFile:
             temps.append(val)
             current_offset += TEMP_STRIDE
 
-        df.insert(0, "Temperature", temps)
+        df = df.with_columns(pl.Series("Temperature", temps))
         print(f"  [+] Temperatures: {len(temps)} readings", file=sys.stderr)
 
         # 7. Extract Timestamps from Footer
@@ -276,16 +271,20 @@ class XptFile:
                 seconds = total_seconds % 60
                 elapsed_labels.append(f"{hours}:{minutes:02d}:{seconds:02d}")
 
-        df.insert(0, "Time_Abs", timestamps)
-        df.insert(0, "Time", elapsed_labels)
-        
-        # Add plate metadata
-        df.insert(0, "Barcode", barcode if barcode else "")
-        df.insert(0, "PlateID", plate_id if plate_id else "")
+        df = df.with_columns([
+            pl.Series("Time_Abs", [ts.isoformat() for ts in timestamps]),
+            pl.Series("Time", elapsed_labels),
+            pl.Series("PlateID", [plate_id if plate_id else ""] * num_timepoints),
+            pl.Series("Barcode", [barcode if barcode else ""] * num_timepoints)
+        ])
 
         # 8. Clean Data
-        # Remove columns that are all zeros (empty wells)
-        df = df.loc[:, (df != 0).any(axis=0)]
+        # Remove well columns that are all zeros (empty wells)
+        cols_to_keep = ["PlateID", "Barcode", "Time", "Time_Abs", "Temperature"]
+        for col in well_labels:
+            if df[col].sum() != 0:
+                cols_to_keep.append(col)
+        df = df.select(cols_to_keep)
         
         print(f"  [+] Final shape: {df.shape[0]} timepoints × {df.shape[1]} columns", file=sys.stderr)
         print(f"  [+] Extraction complete!\n", file=sys.stderr)
@@ -310,7 +309,10 @@ def read_xpt_file(file_path):
             subset_number = stream[1]
             print(f"Processing {file_path} subset {subset_number}...", file=sys.stderr)
             try:
-                df = xpt.extract_stream(subset_number=int(subset_number)).assign(File=file_path, Subset=subset_number)
+                df = xpt.extract_stream(subset_number=int(subset_number)).with_columns([
+                    pl.lit(file_path).alias("File"),
+                    pl.lit(subset_number).alias("Subset")
+                ])
                 frames.append(df)
             except Exception as e:
                 print(f"  [!] Warning: Error processing {file_path} subset {subset_number}, skipping: {e}", file=sys.stderr)
@@ -319,9 +321,9 @@ def read_xpt_file(file_path):
         if not frames:
             raise ValueError(f"No valid data extracted from {file_path}")
         
-        return pd.concat(frames, ignore_index=True).melt(
-            id_vars=["File", "Subset", "PlateID", "Barcode", "Time", "Time_Abs", "Temperature"], 
-            var_name="Well", 
+        return pl.concat(frames).unpivot(
+            index=["File", "Subset", "PlateID", "Barcode", "Time", "Time_Abs", "Temperature"],
+            variable_name="Well",
             value_name="Measurement"
         )
 
@@ -359,11 +361,11 @@ Examples:
         
         # Output as CSV
         if args.output:
-            df.to_csv(args.output, index=False)
+            df.write_csv(args.output)
             print(f"\nData exported to {args.output}", file=sys.stderr)
         else:
             # Print to stdout (diagnostic messages go to stderr)
-            print(df.to_csv(index=False))
+            print(df.write_csv())
     
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
