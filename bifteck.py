@@ -20,113 +20,79 @@ TIMESTAMP_STRIDE = 86  # Bytes between consecutive timestamps
 # These will be determined dynamically
 
 
-class XptFile:
+def extract_plate_metadata(ole, subset_number):
     """
-    A wrapper class for reading BioTek XPT files.
+    Extract plate ID and barcode from HEADER stream.
     
-    Usage:
-        with XptFile('path/to/file.xpt') as xpt:
-            df = xpt.read_stream(subset_number=2)
-            # or read all subsets
-            df = xpt.read_all_subsets()
+    Args:
+        ole: OleFileIO object
+        subset_number: Which SUBSET to extract from
+    
+    Returns:
+        tuple: (plate_id, barcode) or (None, None) if not found
     """
+    header_path = ['SUBSETS', str(subset_number), 'HEADER']
     
-    def __init__(self, file_path):
-        """
-        Initialize XPT file reader.
-        
-        Args:
-            file_path: Path to the XPT file
-        """
-        self.file_path = file_path
-        self.ole = None
+    if not ole.exists(header_path):
+        return None, None
     
-    def __enter__(self):
-        """Open the OLE file and return self for context manager."""
-        self.ole = olefile.OleFileIO(self.file_path)
-        self.ole.__enter__()
-        return self
+    header = ole.openstream(header_path).read()
     
-    def __exit__(self, *args):
-        """Close the OLE file."""
-        if self.ole:
-            return self.ole.__exit__(*args)
+    # Find all length-prefixed ASCII strings in header
+    all_strings = []
+    for i in range(len(header) - 2):
+        length = header[i]
+        if 1 <= length <= 50:
+            string_start = i + 1
+            string_end = string_start + length
+            
+            if string_end <= len(header):
+                try:
+                    text = header[string_start:string_end].decode('ascii')
+                    if text.isprintable() and len(text) == length:
+                        all_strings.append(text)
+                except:
+                    pass
     
-    def extract_plate_metadata(self, subset_number):
-        """
-        Extract plate ID and barcode from HEADER stream.
-        
-        Args:
-            subset_number: Which SUBSET to extract from
-        
-        Returns:
-            tuple: (plate_id, barcode) or (None, None) if not found
-        """
-        if not self.ole:
-            raise RuntimeError("File not opened. Use 'with XptFile(path) as xpt:' context manager.")
-        
-        header_path = ['SUBSETS', str(subset_number), 'HEADER']
-        
-        if not self.ole.exists(header_path):
-            return None, None
-        
-        header = self.ole.openstream(header_path).read()
-        
-        # Find all length-prefixed ASCII strings in header
-        all_strings = []
-        for i in range(len(header) - 2):
-            length = header[i]
-            if 1 <= length <= 50:
-                string_start = i + 1
-                string_end = string_start + length
-                
-                if string_end <= len(header):
-                    try:
-                        text = header[string_start:string_end].decode('ascii')
-                        if text.isprintable() and len(text) == length:
-                            all_strings.append(text)
-                    except:
-                        pass
-        
-        # Last two strings are typically Plate ID and Barcode
-        plate_id = all_strings[-2] if len(all_strings) >= 2 else None
-        barcode = all_strings[-1] if len(all_strings) >= 1 else None
-        
-        return plate_id, barcode
+    # Last two strings are typically Plate ID and Barcode
+    plate_id = all_strings[-2] if len(all_strings) >= 2 else None
+    barcode = all_strings[-1] if len(all_strings) >= 1 else None
+    
+    return plate_id, barcode
 
-    def read_stream(self, stream_path=None, subset_number=None):
-        """
-        Extract data from BioTek XPT files.
-        
-        Args:
-            stream_path: OLE stream path (list like ['SUBSETS', '2', 'DATA'])
-            subset_number: Which SUBSET to extract (2-7), default: 2
-        
-        Returns:
-            pandas DataFrame with extracted data
-        """
-        if not self.ole:
-            raise RuntimeError("File not opened. Use 'with XptFile(path) as xpt:' context manager.")
 
-        if subset_number is None and stream_path is None:
-            raise ValueError("Either stream_path or subset_number must be provided")
+def read_xpt_stream(ole, stream_path=None, subset_number=None):
+    """
+    Extract data from BioTek XPT files.
+    
+    Args:
+        ole: OleFileIO object
+        stream_path: OLE stream path (list like ['SUBSETS', '2', 'DATA'])
+        subset_number: Which SUBSET to extract (2-7), default: 2
+    
+    Returns:
+        pandas DataFrame with extracted data
+    """
 
-        # 1. Auto-detect stream if not provided
-        if stream_path is None:
-            stream_path = ['SUBSETS', str(subset_number), 'DATA']
-            if not self.ole.exists(stream_path):
-                raise ValueError(f"Stream SUBSETS/{subset_number}/DATA not found in XPT file")
-            print(f"  [+] Using stream: {'/'.join(stream_path)}")
-        
-        # 1a. Extract plate metadata from HEADER
-        plate_id, barcode = self.extract_plate_metadata(subset_number)
-        if plate_id:
-            print(f"  [+] Plate ID: {plate_id}")
-        if barcode:
-            print(f"  [+] Barcode: {barcode}")
-        
-        # 2. Load and Decompress Data
-        raw = self.ole.openstream(stream_path).read()
+    if subset_number is None and stream_path is None:
+        raise ValueError("Either stream_path or subset_number must be provided")
+
+    # 1. Auto-detect stream if not provided
+    if stream_path is None:
+        stream_path = ['SUBSETS', str(subset_number), 'DATA']
+        if not ole.exists(stream_path):
+            raise ValueError(f"Stream SUBSETS/{subset_number}/DATA not found in XPT file")
+        print(f"  [+] Using stream: {'/'.join(stream_path)}")
+    
+    # 1a. Extract plate metadata from HEADER
+    plate_id, barcode = extract_plate_metadata(ole, subset_number)
+    if plate_id:
+        print(f"  [+] Plate ID: {plate_id}")
+    if barcode:
+        print(f"  [+] Barcode: {barcode}")
+    
+    # 2. Load and Decompress Data
+    raw = ole.openstream(stream_path).read()
     zlib_off = raw.find(b'\x78\x9c')
     if zlib_off == -1:
         raise ValueError("No zlib compressed data found")
@@ -159,20 +125,20 @@ class XptFile:
             OFFSET_TEMP_ARRAY = offset
             break
     
-        if OFFSET_TEMP_ARRAY is None:
-            raise Warning(f"Could not find temperature data in {self.file_path}, {stream_path}, using fallback offset")
-            OFFSET_TEMP_ARRAY = 364
-        
-        # 4b. Find timestamp offset using "OLE" landmark
-        # Universal marker: \x00\x03OLE\x00 appears 12 bytes before all timestamp arrays
-        OFFSET_TIMESTAMP_ARRAY = None
-        ole_marker = b'\x00\x03OLE\x00'
-        ole_search = footer.find(ole_marker)
-        if ole_search != -1:
-            OFFSET_TIMESTAMP_ARRAY = ole_search + 12  # 12 bytes after start of marker
-        else:
-            raise Warning(f"timestamp marker not found in {self.file_path}, {stream_path}, using fallback offset")
-            OFFSET_TIMESTAMP_ARRAY = 974
+    if OFFSET_TEMP_ARRAY is None:
+        raise Warning(f"Could not find temperature data in {file_path}, {stream_path}, using fallback offset")
+        OFFSET_TEMP_ARRAY = 364
+    
+    # 4b. Find timestamp offset using "OLE" landmark
+    # Universal marker: \x00\x03OLE\x00 appears 12 bytes before all timestamp arrays
+    OFFSET_TIMESTAMP_ARRAY = None
+    ole_marker = b'\x00\x03OLE\x00'
+    ole_search = footer.find(ole_marker)
+    if ole_search != -1:
+        OFFSET_TIMESTAMP_ARRAY = ole_search + 12  # 12 bytes after start of marker
+    else:
+        raise Warning(f"timestamp marker not found in {file_path}, {stream_path}, using fallback offset")
+        OFFSET_TIMESTAMP_ARRAY = 974
 
     # 5. Extract Data Matrix
     matrix_bytes = data[HEADER_SIZE : matrix_end_offset]
@@ -198,23 +164,23 @@ class XptFile:
     temps = []
     current_offset = OFFSET_TEMP_ARRAY
     
-        for i in range(num_timepoints):
-            if current_offset + 8 > len(footer):
-                raise Warning(f"Temperature data out of bounds at timepoint {i} in {self.file_path}, {stream_path}, using NaN for remaining values")
-                # Pad with NaN for missing values
-                temps.extend([np.nan] * (num_timepoints - i))
-                break
+    for i in range(num_timepoints):
+        if current_offset + 8 > len(footer):
+            raise Warning(f"Temperature data out of bounds at timepoint {i} in {file_path}, {stream_path}, using NaN for remaining values")
+            # Pad with NaN for missing values
+            temps.extend([np.nan] * (num_timepoints - i))
+            break
 
-            val = struct.unpack('<d', footer[current_offset : current_offset + 8])[0]
-            
-            # Validate temperature is reasonable (10-40°C typical range)
-            if not (10 <= val <= 40):
-                raise Warning(f"Unusual temperature {val:.1f}°C at timepoint {i} in {self.file_path}, {stream_path}")        
-            temps.append(val)
-            current_offset += TEMP_STRIDE
+        val = struct.unpack('<d', footer[current_offset : current_offset + 8])[0]
+        
+        # Validate temperature is reasonable (10-40°C typical range)
+        if not (10 <= val <= 40):
+            raise Warning(f"Unusual temperature {val:.1f}°C at timepoint {i} in {file_path}, {stream_path}")        
+        temps.append(val)
+        current_offset += TEMP_STRIDE
 
-        df.insert(0, "Temperature", temps)
-        print(f"  [+] Temperatures: {len(temps)} readings")
+    df.insert(0, "Temperature", temps)
+    print(f"  [+] Temperatures: {len(temps)} readings")
 
     # 7. Extract Timestamps from Footer
     # The actual timestamps are stored in the footer at a fixed offset
