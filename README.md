@@ -1,4 +1,4 @@
-# Bifteck reads Biotek Gen5 xpr files
+# Bifteck reads Biotek Gen5 xpt files
 
 Use in python:
 ```
