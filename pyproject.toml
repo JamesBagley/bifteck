@@ -1,0 +1,21 @@
+[project]
+name = "bifteck"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "James Bagley", email = "JABagley9244@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.3.5",
+    "olefile>=0.47",
+    "pandas>=2.3.3",
+]
+
+[project.scripts]
+bifteck = "bifteck:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
