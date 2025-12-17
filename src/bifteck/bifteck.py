@@ -4,6 +4,7 @@ import struct
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
+import sys
 
 # --- STRUCTURAL CONSTANTS (DERIVED FROM MAP) ---
 HEADER_SIZE = 628
@@ -112,14 +113,14 @@ class XptFile:
             stream_path = ['SUBSETS', str(subset_number), 'DATA']
             if not self.ole.exists(stream_path):
                 raise ValueError(f"Stream SUBSETS/{subset_number}/DATA not found in XPT file")
-            print(f"  [+] Using stream: {'/'.join(stream_path)}")
+            print(f"  [+] Using stream: {'/'.join(stream_path)}", file=sys.stderr)
         
         # 1a. Extract plate metadata from HEADER
         plate_id, barcode = self._extract_plate_metadata(subset_number)
         if plate_id:
-            print(f"  [+] Plate ID: {plate_id}")
+            print(f"  [+] Plate ID: {plate_id}", file=sys.stderr)
         if barcode:
-            print(f"  [+] Barcode: {barcode}")
+            print(f"  [+] Barcode: {barcode}", file=sys.stderr)
         
         # 2. Load and Decompress Data
         raw = self.ole.openstream(stream_path).read()
@@ -140,8 +141,8 @@ class XptFile:
         # Calculate exact boundary where Matrix ends and Footer begins
         matrix_end_offset = HEADER_SIZE + (num_timepoints * MATRIX_STRIDE)
 
-        print(f"  [+] Timepoints: {num_timepoints}")
-        print(f"  [+] Matrix end: {matrix_end_offset} / {total_len} bytes")
+        print(f"  [+] Timepoints: {num_timepoints}", file=sys.stderr)
+        print(f"  [+] Matrix end: {matrix_end_offset} / {total_len} bytes", file=sys.stderr)
 
         # 4. Extract footer for landmark detection
         footer = data[matrix_end_offset:]
@@ -210,7 +211,7 @@ class XptFile:
             current_offset += TEMP_STRIDE
 
         df.insert(0, "Temperature", temps)
-        print(f"  [+] Temperatures: {len(temps)} readings")
+        print(f"  [+] Temperatures: {len(temps)} readings", file=sys.stderr)
 
         # 7. Extract Timestamps from Footer
         # The actual timestamps are stored in the footer at a fixed offset
@@ -241,7 +242,7 @@ class XptFile:
             
             # Validate it's a reasonable Excel date (between year 1900-2100)
             if not (1 < ts_float < 100000):
-                print(f"  [!] Warning: Invalid timestamp at index {i} (value: {ts_float}), using fallback")
+                print(f"  [!] Warning: Invalid timestamp at index {i} (value: {ts_float}), using fallback", file=sys.stderr)
                 if timestamps:
                     last_time = timestamps[-1]
                     timestamps.append(last_time + timedelta(seconds=3600))
@@ -253,15 +254,15 @@ class XptFile:
             timestamps.append(timestamp)
         
         if timestamps:
-            print(f"  [+] Start time: {timestamps[0]}")
-            print(f"  [+] End time: {timestamps[-1]}")
+            print(f"  [+] Start time: {timestamps[0]}", file=sys.stderr)
+            print(f"  [+] End time: {timestamps[-1]}", file=sys.stderr)
             
             # Calculate and show interval statistics
             if len(timestamps) >= 2:
                 intervals = [(timestamps[i+1] - timestamps[i]).total_seconds() 
                             for i in range(len(timestamps)-1)]
                 avg_interval = sum(intervals) / len(intervals)
-                print(f"  [+] Average interval: {avg_interval:.1f}s ({avg_interval/3600:.3f}h)")
+                print(f"  [+] Average interval: {avg_interval:.1f}s ({avg_interval/3600:.3f}h)", file=sys.stderr)
         
         # Generate elapsed time labels
         elapsed_labels = []
@@ -286,8 +287,8 @@ class XptFile:
         # Remove columns that are all zeros (empty wells)
         df = df.loc[:, (df != 0).any(axis=0)]
         
-        print(f"  [+] Final shape: {df.shape[0]} timepoints × {df.shape[1]} columns")
-        print(f"  [+] Extraction complete!\n")
+        print(f"  [+] Final shape: {df.shape[0]} timepoints × {df.shape[1]} columns", file=sys.stderr)
+        print(f"  [+] Extraction complete!\n", file=sys.stderr)
         
         return df
 
@@ -307,12 +308,12 @@ def read_xpt_file(file_path):
         frames = []
         for stream in data_streams:
             subset_number = stream[1]
-            print(f"Processing {file_path} subset {subset_number}...")
+            print(f"Processing {file_path} subset {subset_number}...", file=sys.stderr)
             try:
                 df = xpt.extract_stream(subset_number=int(subset_number)).assign(File=file_path, Subset=subset_number)
                 frames.append(df)
             except Exception as e:
-                print(f"  [!] Warning: Error processing {file_path} subset {subset_number}, skipping: {e}")
+                print(f"  [!] Warning: Error processing {file_path} subset {subset_number}, skipping: {e}", file=sys.stderr)
                 continue
         
         if not frames:
