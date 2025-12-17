@@ -323,3 +323,51 @@ def read_xpt_file(file_path):
             var_name="Well", 
             value_name="Measurement"
         )
+
+
+def main():
+    """
+    Command-line interface for extracting BioTek XPT files.
+    Outputs CSV format suitable for importing into R.
+    
+    Usage:
+        python bifteck.py input.xpt
+        python bifteck.py input.xpt > output.csv
+    """
+    import argparse
+    import sys
+    
+    parser = argparse.ArgumentParser(
+        description='Extract data from BioTek XPT files to CSV format',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python bifteck.py experiment.xpt
+  python bifteck.py experiment.xpt > output.csv
+  python bifteck.py experiment.xpt --output results.csv
+        """
+    )
+    parser.add_argument('file_path', help='Path to the XPT file to extract')
+    parser.add_argument('-o', '--output', help='Output CSV file (default: stdout)', default=None)
+    
+    args = parser.parse_args()
+    
+    try:
+        # Extract data
+        df = read_xpt_file(args.file_path)
+        
+        # Output as CSV
+        if args.output:
+            df.to_csv(args.output, index=False)
+            print(f"\nData exported to {args.output}", file=sys.stderr)
+        else:
+            # Print to stdout (diagnostic messages go to stderr)
+            print(df.to_csv(index=False))
+    
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
