@@ -39,7 +39,8 @@ Intended use is for discontinuous kinetic experiments, I don't know exactly what
 File Format
 BioTek XPT files are OLE (Object Linking and Embedding) files, also known as Compound File Binary Format. They are analagous to zip files but have a different terminology, they contain "streams" (analogous to files) which are organized in a directory structure.
 
-Data Organization
+**Data Organization**
+
 Inside an XPT file, data is organized as:
 
 Each SUBSET represents one plate in a multi-plate experiment. The DATA stream contains:
@@ -49,7 +50,8 @@ Matrix blocks (9216 bytes each) containing all 384 well measurements for each ti
 A footer with temperature and timestamp arrays
 The HEADER stream contains plate identification (Plate ID and Barcode).
 
-Implementation
+**Implementation**
+
 This library uses:
 
 olefile to navigate the OLE structure and extract streams
