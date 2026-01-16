@@ -22,6 +22,16 @@ df <- read_csv(pipe("uv run bifteck experiment.xpt"))
 system("uv run bifteck experiment.xpt -o output.csv")
 
 df <- read_csv("output.csv")
+
+```
+
+Use as a uv tool:
+```
+# If you want to have bifteck at your fingertips in any environment, you can add it do your paths as an executable with
+uv tool install .
+
+# Then it could be used e.g. in R with
+pipe("bifteck experiment.xpt"))
 ```
 
 # What's needed in the working directory for R users:
