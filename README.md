@@ -43,7 +43,7 @@ The bifteck directory with the code
 uv will handle installing dependencies automatically when running the command
 
 # Disclaimer
-Intended use is for discontinuous kinetic experiments, I don't know exactly what will happen with other file types.
+Intended use is for discontinuous kinetic experiments, I don't know exactly what will happen with other file types. The format of the files also seems to vary depending on the number of timepoints, I use it for xpt files with 2-16 reads routinely without issues but have seen the date and temperature information fail to parse for files with 50+ reads.
 
 # How it Works
 File Format
