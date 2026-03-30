@@ -424,7 +424,7 @@ def read_xpt_file(file_path):
         if not frames:
             raise ValueError(f"No valid data extracted from {file_path}")
         
-        return pl.concat(frames).unpivot(
+        return pl.concat(frames, how="diagonal").unpivot(
             index=["File", "Subset", "PlateID", "Barcode", "Time", "Time_Abs", "Temperature", "Read"],
             variable_name="Well",
             value_name="Measurement"
